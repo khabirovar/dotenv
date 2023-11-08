@@ -503,3 +503,49 @@ fi
 
 export NVM_DIR="$HOME/.config/nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+
+function grep_gitlab {
+    # curl --header "Authorization: Bearer $GITLAB_TOKEN" "https://gitlab.com/api/v4/groups/2515141/projects?per_page=1&page=1" | jq .[].id
+
+    if [[ -z "$3" ]]; then
+        GIT_GID=2515141  # Group id in gitlab where stored target project
+    else
+        GIT_GID="$3"
+    fi
+
+    if [[ -z "$GITLAB_TOKEN" ]]; then
+        echo "before use function grep_gitlab export GITLAB_TOKEN"
+        return
+    fi
+    AUTH="Authorization: Bearer ${GITLAB_TOKEN}"
+    API_URL="https://gitlab.com/api/v4"
+    if [[ -z "$1" ]]; then
+        PATTERN="DOMAIN_NAME"
+    else
+        PATTERN="$1"
+    fi
+
+    if [[ -z "$2" ]]; then
+        FILEPATH="%2Egitlab%2Dci%2Eyml"
+    else
+        FILEPATH=$(echo $2 | sed 's|\/|%2F|g')
+    fi
+
+    COUNT=1
+    PID=$(curl -s --header "${AUTH}" "${API_URL}/groups/${GIT_GID}/projects??include_subgroups=true&per_page=1&page=${COUNT}" | jq '.[].id' )
+    NAME=$(curl -s --header "${AUTH}" "${API_URL}/groups/${GIT_GID}/projects?include_subgroups=true&per_page=1&page=${COUNT}" | jq '.[].name' )
+    URL=$(curl -s --header "${AUTH}" "${API_URL}/groups/${GIT_GID}/projects?include_subgroups=true&per_page=1&page=${COUNT}" | jq '.[].path_with_namespace' )
+    # FILES=$(curl -s --header "${AUTH}" "${API_URL}/projects/${PID}/repository/tree?recursive=true" | jq .[].name )
+    while [[ -n $PID ]]; do
+        FILE=$(curl -s --header "${AUTH}" "${API_URL}/projects/${PID}/repository/files/${FILEPATH}/raw")
+        echo ${FILE} | grep "$PATTERN" > /dev/null
+        [[ $? -eq 0 ]] && echo "${PID}:    ${NAME}   \"/${URL//\"}\""
+
+        ((COUNT++))
+        # echo "    COUNT=${COUNT}                 "
+        PID=$(curl -s --header "${AUTH}" "${API_URL}/groups/${GIT_GID}/projects?include_subgroups=true&per_page=1&page=${COUNT}" | jq '.[].id' )
+        NAME=$(curl -s --header "${AUTH}" "${API_URL}/groups/${GIT_GID}/projects?include_subgroups=true&per_page=1&page=${COUNT}" | jq '.[].name' )
+        URL=$(curl -s --header "${AUTH}" "${API_URL}/groups/${GIT_GID}/projects?include_subgroups=true&per_page=1&page=${COUNT}" | jq '.[].path_with_namespace' )
+        #FILES=$(curl -s --header "${AUTH}" "${API_URL}/projects/${PID}/repository/tree" | jq .[].name )
+    done
+}
